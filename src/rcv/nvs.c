@@ -90,7 +90,7 @@ static int decode_xf5raw(raw_t *raw)
     dTowGPS = dTowUTC + gpsutcTimescale;
     
     /* Tweak pseudoranges to allow Rinex to represent the NVS time of measure */
-    dTowInt  = 10.0*floor((dTowGPS/10.0)+0.5);
+    dTowInt  = (int)(10.0*floor((dTowGPS/10.0)+0.5));
     dTowFrac = dTowGPS - (double) dTowInt;
     time=gpst2time(week, dTowInt*0.001);
     
@@ -134,7 +134,7 @@ static int decode_xf5raw(raw_t *raw)
         if (sys==SYS_GLO) {
             raw->obs.data[n].L[0]  =  L1 - toff*(FREQ1_GLO+DFRQ1_GLO*carrNo);
         } else {
-            raw->obs.data[n].L[0]  =  L1 - toff*FREQ1;
+            raw->obs.data[n].L[0]  =  L1 - toff*FREQL1;
         }
         raw->obs.data[n].P[0]    = (P1-dTowFrac)*CLIGHT*0.001 - toff*CLIGHT; /* in ms, needs to be converted */
         raw->obs.data[n].D[0]    =  (float)D1;
@@ -197,7 +197,7 @@ static int decode_gpsephem(int sat, raw_t *raw)
     eph.f2     = R4(&puiTmp[114]) * 1e+3;
     eph.f1     = R4(&puiTmp[118]);
     eph.f0     = R4(&puiTmp[122]) * 1e-3;
-    eph.sva    = uraindex(I2(&puiTmp[126]),SYS_GPS);
+    eph.sva    = uraindex(I2(&puiTmp[126]));
     eph.iode   = I2(&puiTmp[128]);
     eph.iodc   = I2(&puiTmp[130]);
     eph.code   = I2(&puiTmp[132]);
@@ -252,7 +252,7 @@ static int decode_gloephem(int sat, raw_t *raw)
         geph.acc[0]=R8(p+51) * 1e+6;
         geph.acc[1]=R8(p+59) * 1e+6;
         geph.acc[2]=R8(p+67) * 1e+6;
-        tb = R8(p+75) * 1e-3;
+        tb = (int)(R8(p+75) * 1e-3);
         tk = tb;
         geph.gamn  =R4(p+83);
         geph.taun  =R4(p+87) * 1e-3;
@@ -550,7 +550,7 @@ extern int input_nvsf(raw_t *raw, FILE *fp)
 extern int gen_nvs(const char *msg, unsigned char *buff)
 {
     unsigned char *q=buff;
-    char mbuff[1024],*args[32],*p;
+    char mbuff[1024],*args[32]={0},*p;
     unsigned int byte;
     int iRate,n,narg=0;
     unsigned char ui100Ms;

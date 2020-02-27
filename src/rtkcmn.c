@@ -16,8 +16,6 @@
 *     [1] IS-GPS-200D, Navstar GPS Space Segment/Navigation User Interfaces,
 *         7 March, 2006
 *     [2] RTCA/DO-229C, Minimum operational performanc standards for global
-*         positioning system/wide area augmentation system airborne equipment,
-*         RTCA inc, November 28, 2001
 *     [3] M.Rothacher, R.Schmid, ANTEX: The Antenna Exchange Format Version 1.4,
 *         15 September, 2010
 *     [4] A.Gelb ed., Applied Optimal Estimation, The M.I.T Press, 1974
@@ -126,6 +124,7 @@
 *           2016/09/17 1.41 suppress warnings
 *           2016/09/19 1.42 modify api deg2dms() to consider numerical error
 *           2017/04/11 1.43 delete EXPORT for global variables
+*           2018/10/10 1.44 modify api satexclude()
 *-----------------------------------------------------------------------------*/
 #define _POSIX_C_SOURCE 199506
 #include <stdarg.h>
@@ -143,6 +142,9 @@
 
 #define POLYCRC32   0xEDB88320u /* CRC32 polynomial */
 #define POLYCRC24Q  0x1864CFBu  /* CRC24Q polynomial */
+
+#define SQR(x)      ((x)*(x))
+#define MAX_VAR_EPH SQR(300.0)  /* max variance eph to reject satellite (m^2) */
 
 static const double gpst0[]={1980,1, 6,0,0,0}; /* gps time reference */
 static const double gst0 []={1999,8,22,0,0,0}; /* galileo system time reference */
@@ -182,29 +184,30 @@ const double chisqr[100]={      /* chi-sqr(n) (alpha=0.001) */
     138 ,139 ,140 ,142 ,143 ,144 ,145 ,147 ,148 ,149
 };
 const double lam_carr[MAXFREQ]={ /* carrier wave length (m) */
-    CLIGHT/FREQ1,CLIGHT/FREQ2,CLIGHT/FREQ5,CLIGHT/FREQ6,CLIGHT/FREQ7,
-    CLIGHT/FREQ8,CLIGHT/FREQ9
+	CLIGHT/FREQL1,CLIGHT/FREQL2,CLIGHT/FREQL5,CLIGHT/FREQE6,
+    CLIGHT/FREQE5ab,CLIGHT/FREQs
 };
 const prcopt_t prcopt_default={ /* defaults processing options */
-    PMODE_SINGLE,0,2,SYS_GPS,   /* mode,soltype,nf,navsys */
+    PMODE_KINEMA,0,2,SYS_GPS|SYS_GLO|SYS_GAL,   /* mode,soltype,nf,navsys */
     15.0*D2R,{{0,0}},           /* elmin,snrmask */
     0,3,3,1,0,1,                /* sateph,modear,glomodear,gpsmodear,bdsmodear,arfilter */
-    20,5,4,5,10,20,             /* maxout,minlock,minfixsats,minholdsats,mindropsats,minfix */
-    0,1,0,0,1,0,                /* rcvstds,armaxiter,estion,esttrop,dynamics,tidecorr */
+    20,0,4,5,10,20,             /* maxout,minlock,minfixsats,minholdsats,mindropsats,minfix */
+    0,1,1,1,1,0,                /* rcvstds,armaxiter,estion,esttrop,dynamics,tidecorr */
     1,0,0,0,0,                  /* niter,codesmooth,intpref,sbascorr,sbassatsel */
     0,0,                        /* rovpos,refpos */
+    WEIGHTOPT_ELEVATION,        /* weightmode */
     {300.0,300.0,300.0},        /* eratio[] */
-    {100.0,0.003,0.003,0.0,1.0},/* err[] */
+    {100.0,0.003,0.003,0.0,1.0,52.0}, /* err[] */
     {30.0,0.03,0.3},            /* std[] */
     {1E-4,1E-3,1E-4,1E-1,1E-2,0.0}, /* prn[] */
     5E-12,                      /* sclkstab */
-    {3.0,0.25,0.0,1E-7,1E-3,0.0,0.0,0.0}, /* thresar */
+    {3.0,0.25,0.0,1E-9,1E-5,0.0,0.0,0.0}, /* thresar */
     0.0,0.0,0.05,0.1,0.01,      /* elmaskar,elmaskhold,thresslip,varholdamb,gainholdamb */
-    30.0,1000.0,30.0,           /* maxtdif,maxinno,maxgdop */
+    30.0,5.0,30.0,              /* maxtdif,maxinno,maxgdop */
     {0},{0},{0},                /* baseline,ru,rb */
     {"",""},                    /* anttype */
     {{0}},{{0}},{0},            /* antdel,pcv,exsats */
-    1,1                           /* maxaveep,initrst */
+    1,1                         /* maxaveep,initrst */
 };
 const solopt_t solopt_default={ /* defaults solution output options */
     SOLF_LLH,TIMES_GPST,1,3,    /* posf,times,timef,timeu */
@@ -248,24 +251,24 @@ static char *obscodes[]={       /* observation code strings */
     "5B","5C","9A","9B","9C", "9X",""  ,""  ,""  ,""    /* 50-59 */
 };
 static unsigned char obsfreqs[]={
-    /* 1:L1/E1, 2:L2/B1, 3:L5/E5a/L3, 4:L6/LEX/B3, 5:E5b/B2, 6:E5(a+b), 7:S */
+    /* 1:L1/E1/B1, 2:L2/E5b/B2, 3:L5/E5a, 4:E6/LEX/B3, 5:E5(a+b), 6:S */
     0, 1, 1, 1, 1,  1, 1, 1, 1, 1, /*  0- 9 */
     1, 1, 1, 1, 2,  2, 2, 2, 2, 2, /* 10-19 */
-    2, 2, 2, 2, 3,  3, 3, 5, 5, 5, /* 20-29 */
-    4, 4, 4, 4, 4,  4, 4, 6, 6, 6, /* 30-39 */
-    2, 2, 4, 4, 3,  3, 3, 1, 1, 3, /* 40-49 */
-    3, 3, 7, 7, 7,  7, 0, 0, 0, 0  /* 50-59 */
+    2, 2, 2, 2, 3,  3, 3, 2, 2, 2, /* 20-29 */
+    4, 4, 4, 4, 4,  4, 4, 5, 5, 5, /* 30-39 */
+    1, 1, 3, 3, 3,  3, 3, 1, 1, 3, /* 40-49 */
+    3, 3, 6, 6, 6,  6, 0, 0, 0, 0  /* 50-59 */
 };
 static char codepris[7][MAXFREQ][16]={  /* code priority table */
-   
-   /* L1/E1      L2/B1        L5/E5a/L3 L6/LEX/B3 E5b/B2    E5(a+b)  S */
-    {"CPYWMNSL","PYWCMNDSLX","IQX"     ,""       ,""       ,""      ,""    }, /* GPS */
-    {"PC"      ,"PC"        ,"IQX"     ,""       ,""       ,""      ,""    }, /* GLO */
-    {"CABXZ"   ,""          ,"IQX"     ,"ABCXZ"  ,"IQX"    ,"IQX"   ,""    }, /* GAL */
-    {"CSLXZ"   ,"SLX"       ,"IQX"     ,"SLX"    ,""       ,""      ,""    }, /* QZS */
-    {"C"       ,""          ,"IQX"     ,""       ,""       ,""      ,""    }, /* SBS */
-    {"IQX"     ,"IQX"       ,"IQX"     ,"IQX"    ,"IQX"    ,""      ,""    }, /* BDS */
-    {""        ,""          ,"ABCX"    ,""       ,""       ,""      ,"ABCX"}  /* IRN */
+
+   /* L1/E1/B1   L2/E5b/B2   L5/E5a/L3 E6/LEX  E5(a+b)  S */
+    {"CPYWMNSL","CLPYWMNDSX","IQX"   ,""        ,""      ,""    }, /* GPS */
+    {"PC"      ,"PC"        ,"IQX"   ,""        ,""      ,""    }, /* GLO */
+    {"CABXZ"   ,"IQX"       ,"IQX"   ,"ABCXZ"   ,"IQX"   ,""    }, /* GAL */
+    {"CSLXZ"   ,"SLX"       ,"IQX"   ,"SLX"     ,""      ,""    }, /* QZS */
+    {"C"       ,""          ,"IQX"   ,""        ,""      ,""    }, /* SBS */
+    {"IQX"     ,"IQX"       ,"IQX"   ,"IQX"     ,""      ,""    }, /* BDS */
+    {""        ,""          ,"ABCX"  ,""        ,""      ,"ABCX"}  /* IRN */
 };
 static fatalfunc_t *fatalfunc=NULL; /* fatal callback function */
 
@@ -522,11 +525,12 @@ extern void satno2id(int sat, char *id)
 /* test excluded satellite -----------------------------------------------------
 * test excluded satellite
 * args   : int    sat       I   satellite number
+*          double var       I   variance of ephemeris (m^2)
 *          int    svh       I   sv health flag
 *          prcopt_t *opt    I   processing options (NULL: not used)
 * return : status (1:excluded,0:not excluded)
 *-----------------------------------------------------------------------------*/
-extern int satexclude(int sat, int svh, const prcopt_t *opt)
+extern int satexclude(int sat, double var, int svh, const prcopt_t *opt)
 {
     int sys=satsys(sat,NULL);
     
@@ -540,6 +544,10 @@ extern int satexclude(int sat, int svh, const prcopt_t *opt)
     if (sys==SYS_QZS) svh&=0xFE; /* mask QZSS LEX health */
     if (svh) {
         trace(3,"unhealthy satellite: sat=%3d svh=%02X\n",sat,svh);
+        return 1;
+    }
+    if (var>MAX_VAR_EPH) {
+        trace(3,"invalid ura satellite: sat=%3d ura=%.2f\n",sat,sqrt(var));
         return 1;
     }
     return 0;
@@ -592,8 +600,8 @@ extern unsigned char obs2code(const char *obs, int *freq)
 * convert obs code to obs code string
 * args   : unsigned char code I obs code (CODE_???)
 *          int    *freq  IO     frequency (NULL: no output)
-*                               (1:L1/E1, 2:L2/B1, 3:L5/E5a/L3, 4:L6/LEX/B3,
-                                 5:E5b/B2, 6:E5(a+b), 7:S)
+*                               (1:L1/E1/B1, 2:L2/B2, 3:L5/E5a/L3/B3, 4:L6/LEX,
+                                 5:E5b, 6:E5(a+b), 7:S)
 * return : obs code string ("1C","1P","1P",...)
 * notes  : obs codes are based on reference [6] and qzss extension
 *-----------------------------------------------------------------------------*/
@@ -2286,7 +2294,7 @@ extern pcv_t *searchpcv(int sat, const char *type, gtime_t time,
     char buff[MAXANT],*types[2],*p;
     int i,j,n=0;
     
-    trace(3,"searchpcv: sat=%2d type=%s\n",sat,type);
+    trace(4,"searchpcv: sat=%2d type=%s\n",sat,type);
     
     if (sat) { /* search satellite antenna */
         for (i=0;i<pcvs->n;i++) {
@@ -2623,39 +2631,34 @@ static void uniqseph(nav_t *nav)
     trace(4,"uniqseph: ns=%d\n",nav->ns);
 }
 /* ura index to ura nominal value (m) ----------------------------------------*/
-extern double uravalue(int ura, int sys)
+extern double uravalue(int sva)
 {
-    if (sys==SYS_GAL) {
-        if (ura>0 && ura<50)
-            return ura/100.0;
-        else if (ura>=50 && ura<75)
-            return (50.0+2.0*(ura-50.0))/100.0;
-        else if (ura>=75 && ura<100)
-            return (100.0+4.0*(ura-75.0))/100.0;
-        else if (ura>=100 && ura<=125)
-            return (200.0+16.0*(ura-100.0))/100.0;
-        else
-            return 6.0;
-    } else
-        return 0<=ura&&ura<15?ura_nominal[ura]:8192.0;
+    return 0<=sva&&sva<15?ura_nominal[sva]:8192.0;
 }
-extern int uraindex(double value, int sys)
+/* ura value (m) to ura index ------------------------------------------------*/
+extern int uraindex(double value)
 {
     int i;
-
-    if (sys==SYS_GAL) {
-        if (value>0 && value<0.5)
-            i=(int)(value*100+0.5);
-        else if (value>=0.5 && value<1.0)
-            i=50+(int)((value-0.5)/2*100+0.5);
-        else if (value>=1.0 && value<2.0)
-            i=75+(int)((value-1.0)/4*100);
-        else if (value>=2.0 && value<6.0)
-            i=100+(int)((value-2.0)/16*100+0.5);
-        else i=125;
-    } else
-        for (i=0;i<15;i++) if (ura_value[i]>=value) break;
+    for (i=0;i<15;i++) if (ura_value[i]>=value) break;
     return i;
+}
+/* galileo sisa index to sisa nominal value (m) ------------------------------*/
+extern double sisa_value(int sisa)
+{
+    if (sisa<= 49) return sisa*0.01;
+    if (sisa<= 74) return 0.5+(sisa- 50)*0.02;
+    if (sisa<= 99) return 1.0+(sisa- 75)*0.04;
+    if (sisa<=125) return 2.0+(sisa-100)*0.16;
+    return -1.0; /* unknown or NAPA */
+}
+/* galileo sisa value (m) to sisa index --------------------------------------*/
+extern int sisa_index(double value)
+{
+    if (value<0.0 || value>6.0) return 255; /* unknown or NAPA */
+    else if (value<=0.5) return (int)(value/0.01);
+    else if (value<=1.0) return (int)((value-0.5)/0.02)+50;
+    else if (value<=2.0) return (int)((value-1.0)/0.04)+75;
+    return (int)((value-2.0)/0.16)+100;
 }
 /* unique ephemerides ----------------------------------------------------------
 * unique ephemerides in navigation data and update carrier wave length
@@ -2942,6 +2945,10 @@ extern void traceclose(void)
 extern void tracelevel(int level)
 {
     level_trace=level;
+}
+extern int gettracelevel(void)
+{
+    return level_trace;
 }
 extern void trace(int level, const char *format, ...)
 {
@@ -3361,7 +3368,7 @@ extern double satwavelen(int sat, int frq, const nav_t *nav)
     int i,sys=satsys(sat,NULL);
     
     if (sys==SYS_GLO) {
-        if (0<=frq&&frq<=1) {
+        if (0<=frq&&frq<=1) { /* L1,L2 */
             for (i=0;i<nav->ng;i++) {
                 if (nav->geph[i].sat!=sat) continue;
                 return CLIGHT/(freq_glo[frq]+dfrq_glo[frq]*nav->geph[i].frq);
@@ -3376,14 +3383,19 @@ extern double satwavelen(int sat, int frq, const nav_t *nav)
         else if (frq==1) return CLIGHT/FREQ2_CMP; /* B2 */
         else if (frq==2) return CLIGHT/FREQ3_CMP; /* B3 */
     }
-    else {
-        if      (frq==0) return CLIGHT/FREQ1; /* L1/E1 */
-        else if (frq==1) return CLIGHT/FREQ2; /* L2 */
-        else if (frq==2) return CLIGHT/FREQ5; /* L5/E5a */
-        else if (frq==3) return CLIGHT/FREQ6; /* L6/LEX */
-        else if (frq==4) return CLIGHT/FREQ7; /* E5b */
-        else if (frq==5) return CLIGHT/FREQ8; /* E5a+b */
-        else if (frq==6) return CLIGHT/FREQ9; /* S */
+    else if (sys==SYS_GAL) {
+        if      (frq==0) return CLIGHT/FREQL1; /* E1 */
+        else if (frq==1) return CLIGHT/FREQE5b; /* E5b */
+        else if (frq==2) return CLIGHT/FREQL5; /* E5a */
+        else if (frq==3) return CLIGHT/FREQE6; /* E6 */
+        else if (frq==5) return CLIGHT/FREQE5ab; /* E5ab */
+    }
+    else { /* GPS,QZS */
+        if      (frq==0) return CLIGHT/FREQL1; /* L1 */
+        else if (frq==1) return CLIGHT/FREQL2; /* L2 */
+        else if (frq==2) return CLIGHT/FREQL5; /* L5 */
+        else if (frq==3) return CLIGHT/FREQE6; /* L6/LEX */
+        else if (frq==6) return CLIGHT/FREQs; /* S */
     }
     return 0.0;
 }

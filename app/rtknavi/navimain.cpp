@@ -2581,7 +2581,7 @@ void __fastcall TMainForm::LoadOpt(void)
     InTimeTag       =ini->ReadInteger("setting","intimetag",       0);
     InTimeSpeed     =ini->ReadString ("setting","intimespeed",  "x1");
     InTimeStart     =ini->ReadString ("setting","intimestart",   "0");
-    InTime64Bit     =ini->ReadInteger("setting","intime64bit",     0);
+    InTime64Bit     =ini->ReadInteger("setting","intime64bit",      sizeof (size_t) == 4 ? 0 : 1);
     OutTimeTag      =ini->ReadInteger("setting","outtimetag",      0);
     OutAppend       =ini->ReadInteger("setting","outappend",       0);
     OutSwapInterval =ini->ReadString ("setting","outswapinterval","");
@@ -2613,6 +2613,10 @@ void __fastcall TMainForm::LoadOpt(void)
     TrkScale2       =ini->ReadInteger("setting","trkscale2",       5);
     TrkScale3       =ini->ReadInteger("setting","trkscale3",       5);
     TrkScale4       =ini->ReadInteger("setting","trkscale4",       5);
+    FreqType1       =ini->ReadInteger("setting","freqtype1",       0);
+    FreqType2       =ini->ReadInteger("setting","freqtype2",       0);
+    FreqType3       =ini->ReadInteger("setting","freqtype3",       0);
+    FreqType4       =ini->ReadInteger("setting","freqtype4",       0);
     BLMode1         =ini->ReadInteger("setting","blmode1",         0);
     BLMode2         =ini->ReadInteger("setting","blmode2",         0);
     BLMode3         =ini->ReadInteger("setting","blmode3",         0);
@@ -2867,6 +2871,10 @@ void __fastcall TMainForm::SaveOpt(void)
     ini->WriteInteger("setting","trkscale2",  TrkScale2          );
     ini->WriteInteger("setting","trkscale3",  TrkScale3          );
     ini->WriteInteger("setting","trkscale4",  TrkScale4          );
+    ini->WriteInteger("setting","freqtype1",  FreqType1          );
+    ini->WriteInteger("setting","freqtype2",  FreqType2          );
+    ini->WriteInteger("setting","freqtype3",  FreqType3          );
+    ini->WriteInteger("setting","freqtype4",  FreqType4          );
     ini->WriteInteger("setting","blmode1",    BLMode1            );
     ini->WriteInteger("setting","blmode2",    BLMode2            );
     ini->WriteInteger("setting","blmode3",    BLMode3            );

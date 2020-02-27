@@ -717,7 +717,6 @@ void __fastcall TOptDialog::LoadOpt(AnsiString file)
 	
 	PosMode		 ->ItemIndex	=prcopt.mode;
 	Freq		 ->ItemIndex	=prcopt.nf>NFREQ-1?NFREQ-1:prcopt.nf-1;
-	Solution	 ->ItemIndex	=prcopt.soltype;
 	ElMask		 ->Text			=s.sprintf("%.0f",prcopt.elmin*R2D);
 	DynamicModel ->ItemIndex	=prcopt.dynamics;
 	TideCorr	 ->ItemIndex	=prcopt.tidecorr;
@@ -940,7 +939,7 @@ void __fastcall TOptDialog::SaveOpt(AnsiString file)
 
 	prcopt.mode		=PosMode	 ->ItemIndex;
 	prcopt.nf		=Freq		 ->ItemIndex+1;
-	prcopt.soltype	=Solution	 ->ItemIndex;
+	prcopt.soltype	=0;   /* forward */
 	prcopt.elmin	=str2dbl(ElMask	->Text)*D2R;
 	prcopt.dynamics	=DynamicModel->ItemIndex;
 	prcopt.tidecorr	=TideCorr	 ->ItemIndex;
@@ -1071,7 +1070,6 @@ void __fastcall TOptDialog::UpdateEnable(void)
 	int ar=rtk||ppp;
 	
 	Freq           ->Enabled=rel;
-	Solution       ->Enabled=false;
 	DynamicModel   ->Enabled=rel;
 	TideCorr       ->Enabled=rel||ppp;
 	PosOpt1        ->Enabled=ppp;
@@ -1233,6 +1231,13 @@ void __fastcall TOptDialog::ReadAntList(void)
 }
 //---------------------------------------------------------------------------
 void __fastcall TOptDialog::NavSys6Click(TObject *Sender)
+{
+	UpdateEnable();
+}
+//---------------------------------------------------------------------------
+
+
+void __fastcall TOptDialog::ObsWeightChange(TObject *Sender)
 {
 	UpdateEnable();
 }

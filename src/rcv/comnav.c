@@ -61,14 +61,6 @@ static int exsign(unsigned int v, int bits)
 {
     return (int)(v&(1<<(bits-1))?v|(~0u<<bits):v);
 }
-/* checksum ------------------------------------------------------------------*/
-static unsigned char chksum(const unsigned char *buff, int len)
-{
-    unsigned char sum=0;
-    int i;
-    for (i=0;i<len;i++) sum^=buff[i];
-    return sum;
-}
 /* adjust weekly rollover of gps time ----------------------------------------*/
 static gtime_t adjweek(gtime_t time, double tow)
 {
@@ -989,7 +981,7 @@ static int decode_bdsephemerisb(raw_t *raw)
     eph.cic   =R8(p);   p+=8;
     eph.cis   =R8(p);
     eph.A     =sqrtA*sqrtA;
-    eph.sva   =uraindex(ura,SYS_CMP);
+    eph.sva   =uraindex(ura);
     
     if (raw->outtype) {
         msg=raw->msgtype+strlen(raw->msgtype);

@@ -38,7 +38,6 @@ TMainWindow *MainWindow;
 #define PRGNAME		"RTKCONV"  // program name
 #define MAXHIST		20		   // max number of histories
 #define TSTARTMARGIN 60.0	   // time margin for file name replacement
-#define TRACEFILE	"rtkconv.trace" // trace file
 
 static int abortf=0;
 
@@ -83,7 +82,7 @@ void __fastcall TMainWindow::FormCreate(TObject *Sender)
 {
 	AnsiString s;
 	
-	Caption=s.sprintf("%s ver.%s %s",PRGNAME,VER_RTKLIB,PATCH_LEVEL);
+	Caption=s.sprintf("%s ver:%s %s",PRGNAME,VER_RTKLIB,PATCH_LEVEL);
 	
 	::DragAcceptFiles(Handle,true);
 }
@@ -454,7 +453,7 @@ void __fastcall TMainWindow::BtnInFileViewClick(TObject *Sender)
 		!strcmp(ext+3,"g"  )||!strcmp(ext+3,"G"  )||!strcmp(ext+3,"h" )||
 		!strcmp(ext+3,"H"  )||!strcmp(ext+3,"q"  )||!strcmp(ext+3,"Q" )||
 		!strcmp(ext+3,"l"  )||!strcmp(ext+3,"L"  )||!strcmp(ext+3,"c" )||
-        !strcmp(ext+3,"C"  )||!strcmp(ext+3,"i"  )||!strcmp(ext+3,"I" )) {
+        !strcmp(ext+3,"C"  )) {
 		viewer->Show();
 		viewer->Read(RepPath(InFile_Text));
 	}
@@ -788,7 +787,7 @@ void __fastcall TMainWindow::ConvertFile(void)
 	AnsiString OutFile9_Text=OutFile9->Text;
 	int i,format,sat;
 	char file[1024]="",*ofile[9],ofile_[9][1024]={""},msg[256],*p;
-	char buff[256],tstr[32];
+	char buff[256],tstr[32],tracefile[1024];
 	double RNXVER[]={2.10,2.11,2.12,3.00,3.01,3.02,3.03};
 	FILE *fp;
 	
@@ -832,8 +831,6 @@ void __fastcall TMainWindow::ConvertFile(void)
 		else if (!strcmp(p+3,"L"   )) format=STRFMT_RINEX;
 		else if (!strcmp(p+3,"c"   )) format=STRFMT_RINEX;
 		else if (!strcmp(p+3,"C"   )) format=STRFMT_RINEX;
-		else if (!strcmp(p+3,"i"   )) format=STRFMT_RINEX;
-		else if (!strcmp(p+3,"I"   )) format=STRFMT_RINEX;
 		else {
 			showmsg("file format can not be recognized");
 			return;
@@ -866,7 +863,7 @@ void __fastcall TMainWindow::ConvertFile(void)
 	if (OutFile9->Enabled&&OutFileEna9->Checked) strcpy(ofile[8],OutFile9_Text.c_str());
 	
 	// check overwrite output file
-	for (i=0;i<8;i++) {
+	for (i=0;i<9;i++) {
 		if (!*ofile[i]||!(fp=fopen(ofile[i],"r"))) continue;
 		fclose(fp);
 		ConfDialog->Label2->Caption=ofile[i];
@@ -929,7 +926,9 @@ void __fastcall TMainWindow::ConvertFile(void)
 	Message		->Caption="";
 	
 	if (TraceLevel>0) {
-		traceopen(TRACEFILE);
+		strcpy(tracefile,ofile[0]);
+		strcat(tracefile,".trace");
+		traceopen(tracefile);
 		tracelevel(TraceLevel);
 	}
 	// convert to rinex

@@ -621,7 +621,7 @@ object MainWindow: TMainWindow
       OnClick = BtnOutFile6Click
     end
     object InFile: TComboBox
-      Left = 5
+      Left = 4
       Top = 16
       Width = 412
       Height = 21
